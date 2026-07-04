@@ -7,6 +7,8 @@ import { regions, regionBySlug } from "./data/regions.mjs";
 import { areas, areaBySlug } from "./data/areas.mjs";
 import { programs, programBySlug } from "./data/programs.mjs";
 import { usePlaces, checks } from "./data/guides.mjs";
+import { districts, districtsByRegion } from "./data/districts.mjs";
+import { stations, stationsByRegion } from "./data/stations.mjs";
 import {
   layout, esc, priceTable, breadcrumbs, faqBlock, whoHowWhy, noticeBar,
 } from "./src/render.mjs";
@@ -139,7 +141,10 @@ function buildRegions() {
   for (const r of regions) {
     const crumbs = [HOME, { label: r.name, href: `/${r.slug}/` }];
     const zoneCards = r.zones.map((z) => ({ href: z.href, title: z.label, text: (areaBySlug[z.href.split("/")[2]] || {}).desc || "생활권 안내" }));
-    const districtChips = r.districts.map((d) => ({ label: d.label, href: d.href }));
+    const rDistricts = districtsByRegion(r.slug);
+    const districtChips = rDistricts.map((d) => ({ label: d.name, href: `/${r.slug}/${d.seg}/` }));
+    const rStations = stationsByRegion(r.slug);
+    const stationChips = rStations.map((s) => ({ label: s.name, href: `/station/${s.seg}/` }));
     const progCards = r.programs.map((slug) => {
       const p = programBySlug[slug];
       return { href: `/program/${p.slug}/`, title: p.name, text: p.lead };
@@ -163,7 +168,8 @@ function buildRegions() {
       <p>${esc(r.character)}</p>
       <h2>가까운 역·터미널·공항 기준</h2>
       <p>${esc(r.transport)}</p>
-      ${r.districts.length ? `<h2>핵심 시·군·구</h2><p>주요 행정구역별 안내 페이지입니다.</p>${relatedChips(districtChips)}` : ""}
+      ${districtChips.length ? `<h2>핵심 시·군·구</h2><p>주요 행정구역별 안내 페이지입니다.</p>${relatedChips(districtChips)}` : ""}
+      ${stationChips.length ? `<h2>역·터미널·공항 거점</h2><p>거점 인접 숙소 이용 기준 안내입니다.</p>${relatedChips(stationChips)}` : ""}
     </div></div></section>
 
     <section class="section" style="padding-top:0"><div class="wrap">
@@ -191,31 +197,143 @@ function buildRegions() {
     emit(`/${r.slug}/`, {
       title: `${r.h1}｜${site.brand}`, desc: r.desc, image: HERO, crumbs, faq, body,
     });
-
-    // simple district stubs (noindex until real content is added)
-    for (const d of r.districts) {
-      const dslug = d.href.replace(/\//g, "").replace(r.slug, "");
-      buildDistrict(r, d, crumbs);
-    }
   }
 }
 
-function buildDistrict(r, d, parentCrumbs) {
-  const crumbs = [...parentCrumbs, { label: d.label, href: d.href }];
-  const body = `
-    ${hero({ eyebrow: r.keyword, h1: `${r.name.replace("권", "")} ${d.label} 출장마사지 안내`, lead: `${d.label} 생활권의 숙소 유형과 예약 전 확인사항을 안내합니다. 상세 콘텐츠는 순차적으로 보강됩니다.`, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
+/* ---------- shared 숙소·확인 body block (locality pages) ---------- */
+function stayCheckBlock() {
+  return `
+      <h2>호텔·오피스텔·자택 이용 전 확인</h2>
+      <ul class="bullets">
+        <li>호텔·숙소: 객실 출입 가능 여부, 프런트 확인 방식, 예약자명, 야간 출입 가능 여부</li>
+        <li>오피스텔: 공동현관 출입 방식(비밀번호·카드), 정확한 호수, 엘리베이터 층 제한</li>
+        <li>아파트·자택: 정확한 동·호수, 공동현관, 방문자 등록 여부, 주차 가능 여부</li>
+        <li>산업단지·리조트: 정문·동 번호 또는 객실 정책, 이동 가능 시간</li>
+      </ul>`;
+}
+
+/* ============================================================
+   DISTRICTS (시·군·구 상세) — 전부 index
+   ============================================================ */
+function buildDistricts() {
+  for (const d of districts) {
+    const r = regionBySlug[d.region];
+    const path = `/${r.slug}/${d.seg}/`;
+    const crumbs = [HOME, { label: r.name, href: `/${r.slug}/` }, { label: d.name, href: path }];
+    const cityName = r.name.replace("권", "");
+    const progCards = d.programs.map((s) => { const p = programBySlug[s]; return { href: `/program/${p.slug}/`, title: p.name, text: p.lead }; });
+    const siblings = districtsByRegion(r.slug).filter((x) => x.seg !== d.seg).slice(0, 8)
+      .map((x) => ({ label: x.name, href: `/${r.slug}/${x.seg}/` }));
+    const zoneArea = areaBySlug[d.zone.split("/")[2]];
+    const related = [
+      ...(zoneArea ? [{ label: `${zoneArea.name} 생활권`, href: d.zone }] : []),
+      { label: `${r.name} 전체`, href: `/${r.slug}/` },
+      ...siblings.slice(0, 5),
+    ];
+    const faq = [
+      { q: `${d.name}에서도 방문이 가능한가요?`, a: `${d.name}의 정확한 주소와 가까운 생활권, 예약 가능 시간, 숙소 유형을 확인한 뒤 안내합니다.` },
+      { q: `${d.name}에서 어떤 프로그램이 많이 이용되나요?`, a: `${d.programs.map((s) => programBySlug[s].name).join(", ")} 등이 이용되며, 원하는 강도와 집중 부위를 예약 시 전달해 주세요.` },
+      ...COMMON_FAQ.slice(1),
+    ];
+
+    const body = `
+    ${hero({ eyebrow: r.keyword, h1: `${d.name} 출장마사지 안내`, lead: d.char, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
+    ${breadcrumbs(crumbs)}
+
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+      <h2>${esc(d.name)} 생활권 특징</h2>
+      <p>${esc(d.char)}</p>
+      <h2>가까운 역·터미널·공항 기준</h2>
+      <p>${esc(d.transport)} 정확한 주소를 전달하면 이동 동선과 이동 가능 시간을 안내받을 수 있습니다.</p>
+      <h2>${esc(d.name)} 숙소 유형 안내</h2>
+      <p>${esc(d.stay)}</p>
+      ${stayCheckBlock()}
+      <h2>마사지 프로그램 선택 기준</h2>
+      <p>${esc(d.name)}에서는 ${esc(d.programs.map((s) => programBySlug[s].name).join(", "))} 선호도가 높은 편입니다. 60·90·120분 코스 중 원하는 구성과 집중 부위를 예약 시 전달해 주세요.</p>
+    </div></div></section>
+
+    ${priceTable()}
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Programs</span><h2>${esc(d.name)} 추천 프로그램</h2></div>
+      ${cardGrid(progCards, 3)}
+    </div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>Who, How, Why</h2>${whoHowWhy(`${cityName} ${d.name}`)}
+      <h2>관련 지역 보기</h2>${relatedChips(related)}
+    </div></div></section>
+
+    ${noticeBar()}
+    ${faqBlock(faq)}`;
+
+    emit(path, {
+      title: `${d.name} 출장마사지 안내｜${r.name}`,
+      desc: `${d.name} 출장마사지 예약 전 생활권 특징과 숙소 유형·이동 기준·프로그램을 안내합니다.`,
+      image: HERO, crumbs, faq, body,
+    });
+  }
+}
+
+/* ============================================================
+   STATIONS (역·터미널·공항 거점) — 전부 index
+   ============================================================ */
+function buildStations() {
+  const idxCrumbs = [HOME, { label: "역·터미널·공항 거점", href: "/station/" }];
+  const cards = stations.map((s) => ({ href: `/station/${s.seg}/`, title: `${s.name}`, text: s.char.split(". ")[0] + "." }));
+  emit("/station/", {
+    title: "역·터미널·공항 거점 안내｜영남·제주 출장마사지｜" + site.brand,
+    desc: "부산역·동대구역·제주공항 등 역·터미널·공항 거점 인접 숙소 출장마사지 이용 기준을 안내합니다.",
+    image: HERO, crumbs: idxCrumbs,
+    body: `${hero({ eyebrow: "Hubs", h1: "역·터미널·공항 거점 안내", lead: "부산역·동대구역·진주역·제주공항 등 주요 거점 인접 숙소의 이용 기준과 이동 동선을 안내합니다.", ctas: [{ label: "예약 문의", href: site.phoneHref }] })}
+      ${breadcrumbs(idxCrumbs)}
+      <section class="section" style="padding-top:24px"><div class="wrap">${cardGrid(cards, 3)}</div></section>
+      ${noticeBar()}`,
+  });
+
+  for (const s of stations) {
+    const r = regionBySlug[s.region];
+    const path = `/station/${s.seg}/`;
+    const crumbs = [...idxCrumbs, { label: s.name, href: path }];
+    const progCards = s.programs.map((x) => { const p = programBySlug[x]; return { href: `/program/${p.slug}/`, title: p.name, text: p.lead }; });
+    const zoneArea = areaBySlug[s.zone.split("/")[2]];
+    const siblings = stationsByRegion(s.region).filter((x) => x.seg !== s.seg).slice(0, 6).map((x) => ({ label: x.name, href: `/station/${x.seg}/` }));
+    const related = [
+      ...(zoneArea ? [{ label: `${zoneArea.name} 생활권`, href: s.zone }] : []),
+      { label: `${r.name} 전체`, href: `/${r.slug}/` },
+      ...siblings,
+    ];
+    const faq = [
+      { q: `${s.name} 인근 숙소도 이용할 수 있나요?`, a: `${s.name} 인근 숙소는 정확한 주소와 이동 가능 시간, 숙소 유형을 확인한 뒤 안내합니다.` },
+      ...COMMON_FAQ.slice(1),
+    ];
+    const body = `
+    ${hero({ eyebrow: `${r.keyword} · ${s.kind}`, h1: `${s.name} 인근 출장마사지 안내`, lead: s.char, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "거점 전체", href: "/station/" }] })}
     ${breadcrumbs(crumbs)}
     <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
-      <p>${esc(d.label)} 지역 안내 페이지입니다. 정확한 방문 가능 여부는 실제 주소와 예약 조건 확인 후 안내합니다.</p>
-      <h2>관련 생활권</h2>${relatedChips(r.zones.map((z) => ({ label: z.label, href: z.href })))}
+      <h2>${esc(s.name)} 거점 특징</h2>
+      <p>${esc(s.char)}</p>
+      <h2>거점 인접 숙소 이용 기준</h2>
+      <p>${esc(s.name)} 인근은 역·터미널·공항 접근성이 좋아 출장·환승 이용이 많은 편입니다. 출구별·노선별 안내가 아니라 정확한 숙소 주소를 기준으로 이동 동선을 확인합니다.</p>
+      ${stayCheckBlock()}
     </div></div></section>
-    ${noticeBar()}`;
-  // noindex: thin stub per spec (본문 2,000자 미만 → noindex)
-  emit(d.href, {
-    title: `${d.label} 출장마사지 안내｜${r.name}`,
-    desc: `${d.label} 출장마사지 예약 전 생활권과 숙소 유형, 이동 기준을 안내합니다.`,
-    image: HERO, crumbs, noindex: true, body,
-  });
+    ${priceTable()}
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Programs</span><h2>추천 프로그램</h2></div>
+      ${cardGrid(progCards, 3)}
+    </div></section>
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>관련 지역 보기</h2>${relatedChips(related)}
+    </div></div></section>
+    ${noticeBar()}
+    ${faqBlock(faq)}`;
+
+    emit(path, {
+      title: `${s.name} 인근 출장마사지 안내｜${site.brand}`,
+      desc: `${s.name} 인근 숙소 출장마사지 예약 전 이동 동선과 숙소 이용 기준을 안내합니다.`,
+      image: HERO, crumbs, faq, body,
+    });
+  }
 }
 
 /* ============================================================
@@ -434,7 +552,9 @@ function buildStatic() {
   // HTML sitemap page
   const groups = [
     ["권역", regions.map((r) => ({ label: r.name, href: `/${r.slug}/` }))],
+    ["시·군·구", districts.map((d) => ({ label: `${regionBySlug[d.region].name.replace("권", "")} ${d.name}`, href: `/${d.region}/${d.seg}/` }))],
     ["생활권", areas.map((a) => ({ label: a.name, href: `/area/${a.slug}/` }))],
+    ["역·터미널·공항", stations.map((s) => ({ label: s.name, href: `/station/${s.seg}/` }))],
     ["프로그램", programs.map((p) => ({ label: p.name, href: `/program/${p.slug}/` }))],
     ["이용 장소", usePlaces.map((u) => ({ label: u.name, href: `/use/${u.slug}/` }))],
     ["예약 전 확인", checks.map((c) => ({ label: c.name, href: `/check/${c.slug}/` }))],
@@ -465,7 +585,9 @@ cpSync(join(__dirname, "assets"), join(OUT, "assets"), { recursive: true });
 
 buildHome();
 buildRegions();
+buildDistricts();
 buildAreas();
+buildStations();
 buildPrograms();
 buildGuides();
 buildStatic();

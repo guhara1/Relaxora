@@ -70,6 +70,7 @@ export const footerNav = {
   ],
   안내: [
     { label: "마사지 프로그램", href: "/program/" },
+    { label: "역·터미널·공항 거점", href: "/station/" },
     { label: "이용 장소 안내", href: "/use/" },
     { label: "예약 전 확인", href: "/check/" },
     { label: "운영 기준", href: "/policy/operation/" },
