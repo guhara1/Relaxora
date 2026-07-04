@@ -11,6 +11,13 @@ export const site = {
   telegramBuild: "https://t.me/gandago",     // 웹사이트 제작문의
   telegramPartner: "https://t.me/gandago",   // 제휴문의
   locale: "ko_KR",
+
+  // 검색엔진 사이트 소유확인(verification)
+  naverVerify: "ddd850b2c9517e61d04c223413f5a3628524b58d",
+  googleVerify: "", // 구글 서치콘솔 메타 태그 값이 있으면 입력
+
+  // 후기 스키마 출력 여부(자사 후기 self-serving 리스크 → 필요 시 false)
+  reviewsSchema: true,
 };
 
 // Top navigation with dropdowns (label → href, or children)
@@ -71,6 +78,7 @@ export const footerNav = {
   안내: [
     { label: "마사지 프로그램", href: "/program/" },
     { label: "역·터미널·공항 거점", href: "/station/" },
+    { label: "이용 후기", href: "/reviews/" },
     { label: "이용 장소 안내", href: "/use/" },
     { label: "예약 전 확인", href: "/check/" },
     { label: "운영 기준", href: "/policy/operation/" },

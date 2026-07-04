@@ -9,8 +9,9 @@ import { programs, programBySlug } from "./data/programs.mjs";
 import { usePlaces, checks } from "./data/guides.mjs";
 import { districts, districtsByRegion } from "./data/districts.mjs";
 import { stations, stationsByRegion } from "./data/stations.mjs";
+import { reviews, reviewAggregate } from "./data/reviews.mjs";
 import {
-  layout, esc, priceTable, breadcrumbs, faqBlock, whoHowWhy, noticeBar,
+  layout, esc, priceTable, breadcrumbs, faqBlock, whoHowWhy, noticeBar, reviewsSection,
 } from "./src/render.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,7 +28,7 @@ function emit(path, page) {
   const dir = path === "/" ? OUT : join(OUT, path);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "index.html"), html);
-  if (!page.noindex) pages.push(path);
+  if (!page.noindex) pages.push({ path, title: page.title, desc: page.desc });
 }
 
 const HOME = { label: "홈", href: "/" };
@@ -69,6 +70,31 @@ function cardGrid(items, cols = 3) {
 
 function relatedChips(items) {
   return `<div class="related">${items.map((i) => `<a class="chip" href="${i.href}">${esc(i.label)}</a>`).join("")}</div>`;
+}
+
+/* 롱테일 내부링크 — 지역명 + 주제 앵커로 기존 페이지에 연결(도어웨이 페이지 생성 없이) */
+function longtailChips(place) {
+  const p = place;
+  return [
+    { label: `${p} 호텔 출장마사지`, href: "/use/hotel/" },
+    { label: `${p} 오피스텔 홈타이`, href: "/use/officetel/" },
+    { label: `${p} 자택 방문마사지`, href: "/use/home/" },
+    { label: `${p} 24시간 야간 출장마사지`, href: "/use/night/" },
+    { label: `${p} 스웨디시 마사지`, href: "/program/swedish/" },
+    { label: `${p} 아로마 출장마사지`, href: "/program/aroma-therapy/" },
+    { label: `${p} 타이 마사지`, href: "/program/thai-massage/" },
+    { label: `${p} 커플 마사지`, href: "/program/couple/" },
+    { label: `${p} 스포츠 마사지`, href: "/program/sports-massage/" },
+    { label: `${p} 출장마사지 예약 전 확인`, href: "/check/" },
+  ];
+}
+function longtailSection(place, note) {
+  return `
+  <section class="section" style="padding-top:0"><div class="wrap"><div class="longtail">
+    <h2>${esc(place)} 출장마사지, 이런 주제로도 찾아보세요</h2>
+    <p>${esc(note || `${place}에서 숙소 유형·시간대·프로그램별로 자주 찾는 주제입니다. 각 안내 페이지에서 이용 기준을 확인하세요.`)}</p>
+    ${relatedChips(longtailChips(place))}
+  </div></div></section>`;
 }
 
 /* plain (Korean) text length of rendered HTML — for 2,000자 검증 */
@@ -243,6 +269,10 @@ function buildHome() {
       ${cardGrid(useCards, 4)}
     </div></section>
 
+    ${reviewsSection(reviews, { limit: 6 })}
+
+    ${longtailSection("영남·제주", "부산·대구·창원·경남·경북·제주에서 숙소 유형·시간대·프로그램별로 자주 찾는 주제입니다. 각 안내 페이지에서 이용 기준을 확인하세요.")}
+
     ${noticeBar()}
     ${faqBlock(COMMON_FAQ)}
   `;
@@ -317,6 +347,8 @@ function buildRegions() {
       ${relatedChips(otherRegions)}
     </div></div></section>
 
+    ${longtailSection(r.name.replace("권", ""))}
+
     ${faqBlock(faq)}`;
 
     emit(`/${r.slug}/`, {
@@ -378,6 +410,8 @@ function buildDistricts() {
       <h2>Who, How, Why</h2>${whoHowWhy(`${cityName} ${d.name}`)}
       <h2>관련 지역 보기</h2>${relatedChips(related)}
     </div></div></section>
+
+    ${longtailSection(`${cityName} ${d.name}`)}
 
     ${faqBlock(faq)}`;
 
@@ -450,6 +484,9 @@ function buildStations() {
       <h2>Who, How, Why</h2>${whoHowWhy(`${s.name} 인근`)}
       <h2>관련 지역 보기</h2>${relatedChips(related)}
     </div></div></section>
+
+    ${longtailSection(`${s.name} 인근`)}
+
     ${faqBlock(faq)}`;
 
     const sStayWord = /공항/.test(s.kind) ? "공항 인접 숙소" : /터미널/.test(s.kind) ? "터미널 인근 숙소" : "역세권 숙소";
@@ -498,6 +535,8 @@ function buildAreas() {
       <h2>Who, How, Why</h2>${whoHowWhy(a.name)}
       ${siblingZones.length ? `<h2>관련 지역 보기</h2>${relatedChips(siblingZones.concat([{ label: `${r.name} 전체`, href: `/${r.slug}/` }]))}` : ""}
     </div></div></section>
+
+    ${longtailSection(a.name.replace("권", ""))}
 
     ${faqBlock(faq)}`;
 
@@ -681,15 +720,51 @@ function buildStatic() {
 }
 
 /* ============================================================
-   sitemap.xml + robots.txt
+   REVIEWS page (후기 노출 + 개별 Review 스키마)
    ============================================================ */
+function buildReviews() {
+  const crumbs = [HOME, { label: "이용 후기", href: "/reviews/" }];
+  const body = `
+    ${hero({ eyebrow: "Reviews", h1: "이용 후기", lead: `${site.brand} 출장마사지를 이용하신 고객님들의 후기입니다. 새벽·아침·점심·저녁·주말·명절 등 시간대와 상황별 이용 경험을 확인해 보세요.`, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "지역별 안내", href: "/" }] })}
+    ${breadcrumbs(crumbs)}
+    ${reviewsSection(reviews, { showAll: true, title: "전체 이용 후기" })}
+    ${longtailSection("영남·제주")}
+    ${noticeBar()}`;
+  emit("/reviews/", {
+    title: `이용 후기｜별점 ${reviewAggregate.ratingValue}/5·${reviewAggregate.reviewCount}건｜${site.brand}`,
+    desc: `${site.brand} 출장마사지 이용 후기 ${reviewAggregate.reviewCount}건과 새벽·야간·주말·명절 등 시간대별 이용 경험을 확인하세요.`,
+    image: HERO, crumbs, reviews: true, body,
+  });
+}
+
+/* ============================================================
+   sitemap.xml + rss.xml + robots.txt  (네이버·구글 색인 최적화)
+   ============================================================ */
+const BUILD = new Date();
 function buildSitemap() {
-  const urls = pages.map((p) => `  <url><loc>${site.domain.replace(/\/$/, "")}${p}</loc></url>`).join("\n");
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemap.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`
-    .replace("sitemap.org/schemas", "sitemaps.org/schemas");
-  writeFileSync(join(OUT, "sitemap.xml"), xml);
+  const base = site.domain.replace(/\/$/, "");
+  const day = BUILD.toISOString().slice(0, 10);
+  const rfc = BUILD.toUTCString();
+  const priority = (p) =>
+    p === "/" ? "1.0"
+      : /^\/(busan|daegu|changwon|gyeongnam|gyeongbuk|jeju|program|reviews|station|use|check)\/$/.test(p) ? "0.9"
+        : "0.7";
+
+  // XML sitemap (lastmod/changefreq/priority)
+  const urls = pages.map((p) =>
+    `  <url><loc>${base}${p.path}</loc><lastmod>${day}</lastmod><changefreq>weekly</changefreq><priority>${priority(p.path)}</priority></url>`).join("\n");
+  writeFileSync(join(OUT, "sitemap.xml"),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+
+  // RSS 2.0 feed — 크롤러 발견 가속(rss맵)
+  const items = pages.map((p) =>
+    `    <item><title>${esc(p.title)}</title><link>${base}${p.path}</link><guid>${base}${p.path}</guid><description>${esc(p.desc || "")}</description><pubDate>${rfc}</pubDate></item>`).join("\n");
+  writeFileSync(join(OUT, "rss.xml"),
+    `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n  <channel>\n    <title>${esc(site.brand)} · 영남·제주 출장마사지</title>\n    <link>${base}/</link>\n    <atom:link href="${base}/rss.xml" rel="self" type="application/rss+xml"/>\n    <description>부산·대구·창원·경남·경북·제주 출장마사지·홈타이 지역 안내</description>\n    <language>ko</language>\n    <lastBuildDate>${rfc}</lastBuildDate>\n${items}\n  </channel>\n</rss>\n`);
+
+  // robots.txt — 네이버(Yeti)·구글(Googlebot) 명시 허용 + 사이트맵
   writeFileSync(join(OUT, "robots.txt"),
-    `User-agent: *\nAllow: /\nSitemap: ${site.domain.replace(/\/$/, "")}/sitemap.xml\n`);
+    `User-agent: *\nAllow: /\n\nUser-agent: Yeti\nAllow: /\n\nUser-agent: Googlebot\nAllow: /\n\nUser-agent: Bingbot\nAllow: /\n\nSitemap: ${base}/sitemap.xml\n# RSS: ${base}/rss.xml\n`);
 }
 
 /* ============================================================
@@ -712,6 +787,7 @@ buildAreas();
 buildStations();
 buildPrograms();
 buildGuides();
+buildReviews();
 buildStatic();
 buildSitemap();
 

@@ -1,4 +1,5 @@
 import { site, nav, footerNav } from "../data/site.mjs";
+import { reviews, reviewAggregate } from "../data/reviews.mjs";
 
 /* ---------- helpers ---------- */
 export const esc = (s = "") =>
@@ -126,14 +127,37 @@ function footer() {
 function schemaBlocks(page) {
   const blocks = [];
 
-  // Organization
-  blocks.push({
+  // Organization (+ sitewide aggregateRating, + full reviews where visible)
+  const org = {
     "@context": "https://schema.org", "@type": "Organization",
     name: site.brand, url: site.domain,
     telephone: site.phone,
     areaServed: ["부산", "대구", "창원", "경상남도", "경상북도", "제주"],
     sameAs: [site.telegram].filter(Boolean),
-  });
+  };
+  if (site.reviewsSchema) {
+    org.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: reviewAggregate.ratingValue,
+      reviewCount: reviewAggregate.reviewCount,
+      bestRating: reviewAggregate.bestRating,
+      worstRating: reviewAggregate.worstRating,
+    };
+    // 개별 Review 스키마는 후기가 실제로 노출되는 페이지(page.reviews)에만 부착
+    if (page.reviews) {
+      org.review = reviews.map((r) => ({
+        "@type": "Review",
+        name: r.title,
+        author: { "@type": "Person", name: r.author },
+        datePublished: r.date,
+        reviewBody: r.body,
+        reviewRating: {
+          "@type": "Rating", ratingValue: r.rating, bestRating: 5, worstRating: 1,
+        },
+      }));
+    }
+  }
+  blocks.push(org);
 
   // WebPage (+ optional primaryImage as ImageObject)
   const webpage = {
@@ -186,6 +210,9 @@ export function layout(page) {
   <meta name="description" content="${esc(page.desc)}">
   <link rel="canonical" href="${abs(page.path)}">
   ${page.noindex ? '<meta name="robots" content="noindex, follow">' : '<meta name="robots" content="index, follow, max-image-preview:large">'}
+  ${site.naverVerify ? `<meta name="naver-site-verification" content="${site.naverVerify}">` : ""}
+  ${site.googleVerify ? `<meta name="google-site-verification" content="${site.googleVerify}">` : ""}
+  <link rel="alternate" type="application/rss+xml" title="${esc(site.brand)} RSS" href="/rss.xml">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="${esc(site.brand)}">
   <meta property="og:title" content="${esc(page.title)}">
@@ -247,4 +274,31 @@ export function noticeBar() {
     <b>안내</b>
     <span>불법·선정적 서비스는 제공하거나 안내하지 않습니다. 방문 가능 여부는 실제 주소와 예약 조건 확인 후 안내하며, 예약 확인에 필요한 최소한의 개인정보만 사용합니다.</span>
   </div></div>`;
+}
+
+/* ---------- reviews ---------- */
+function stars(n) {
+  return `<span class="stars" aria-label="별점 ${n}점">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>`;
+}
+export function reviewsSection(items, { limit, title = "이용 후기", showAll } = {}) {
+  const list = limit ? items.slice(0, limit) : items;
+  const cards = list.map((r) => `
+    <figure class="review-card">
+      <figcaption class="review-head">
+        ${stars(r.rating)}
+        <span class="review-title">${esc(r.title)}</span>
+      </figcaption>
+      <blockquote>${esc(r.body)}</blockquote>
+      <div class="review-meta"><b>${esc(r.author)}</b><span>${esc(r.date)}</span></div>
+    </figure>`).join("");
+  return `
+  <section class="section" aria-labelledby="reviews-title"><div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Reviews</span>
+      <h2 id="reviews-title">${esc(title)}</h2>
+      <p><span class="agg-star">${stars(Math.round(reviewAggregate.ratingValue))}</span> 평균 ${reviewAggregate.ratingValue} / 5 · 후기 ${reviewAggregate.reviewCount}건</p>
+    </div>
+    <div class="review-grid">${cards}</div>
+    ${showAll ? "" : `<div style="text-align:center;margin-top:28px"><a class="btn btn-ghost" href="/reviews/">이용 후기 전체 보기 →</a></div>`}
+  </div></section>`;
 }

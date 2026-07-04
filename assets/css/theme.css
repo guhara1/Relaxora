@@ -303,6 +303,32 @@ ul { margin: 0; padding: 0; list-style: none; }
 .notice-bar b { color: var(--text-hi); }
 
 /* ----------------------------------------------------------------
+   8b. Reviews
+   ---------------------------------------------------------------- */
+.stars { color: var(--gold); letter-spacing: 2px; font-size: 15px; white-space: nowrap; }
+.stars .off { color: rgba(255, 255, 255, 0.16); }
+.agg-star { vertical-align: -1px; }
+.review-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.review-card {
+  margin: 0; background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.review-title { font-weight: 700; color: var(--text-hi); font-size: 15px; }
+.review-card blockquote { margin: 0; color: var(--text-muted); font-size: 14.5px; line-height: 1.75; flex: 1; }
+.review-meta { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; }
+.review-meta b { color: var(--text); }
+.review-meta span { color: var(--text-dim); }
+
+/* Long-tail topic links */
+.longtail { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; }
+.longtail h2 { font-size: 20px; margin-bottom: 8px; }
+.longtail p { color: var(--text-muted); font-size: 14px; margin-bottom: 16px; }
+
+@media (max-width: 860px) { .review-grid { grid-template-columns: 1fr; } }
+
+/* ----------------------------------------------------------------
    9. Footer
    ---------------------------------------------------------------- */
 .site-footer { border-top: 1px solid var(--line); background: var(--bg-deep); margin-top: 60px; }
