@@ -583,6 +583,12 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 cpSync(join(__dirname, "assets"), join(OUT, "assets"), { recursive: true });
 
+// favicon / manifest files must sit at the site root
+for (const f of ["favicon.ico", "favicon.svg", "apple-touch-icon.png", "icon-16.png",
+  "icon-32.png", "icon-192.png", "icon-512.png", "site.webmanifest"]) {
+  cpSync(join(__dirname, "assets/favicon", f), join(OUT, f));
+}
+
 buildHome();
 buildRegions();
 buildDistricts();

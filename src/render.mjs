@@ -194,6 +194,11 @@ export function layout(page) {
   <meta property="og:image" content="${abs(page.ogImage || "/assets/images/hero.webp")}">
   <meta property="og:locale" content="${site.locale}">
   <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#0b0f14">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="/assets/css/theme.css">
   ${schemaBlocks(page)}
