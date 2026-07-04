@@ -71,6 +71,86 @@ function relatedChips(items) {
   return `<div class="related">${items.map((i) => `<a class="chip" href="${i.href}">${esc(i.label)}</a>`).join("")}</div>`;
 }
 
+/* plain (Korean) text length of rendered HTML — for 2,000자 검증 */
+function koLen(html) {
+  const t = html.replace(/<[^>]+>/g, " ");
+  return (t.match(/[가-힣]/g) || []).length;
+}
+
+/* infer a locality profile from its copy → tailors the 이동/숙소 문단 */
+function profileOf(txt = "") {
+  if (/(국가산단|산업단지|산단|조선|철강|항공산업|테크노폴리스)/.test(txt)) return "industrial";
+  if (/(공항)/.test(txt)) return "airport";
+  if (/(리조트|펜션|관광단지|보문|중문|관광 숙소|관광지)/.test(txt)) return "tourist";
+  if (/(해안|해수욕|바다|해변|항만|어촌|해안도로)/.test(txt)) return "coastal";
+  if (/(신도시|택지|주거 단지|아파트 단지)/.test(txt)) return "newtown";
+  if (/(대학|대학가|캠퍼스)/.test(txt)) return "university";
+  if (/(혁신도시|도청|행정|업무지구|금융단지|시청)/.test(txt)) return "admin";
+  return "urban";
+}
+const PROFILE_PARA = {
+  industrial: (n) => `${n}은(는) 산업단지·공단 인접 숙소 수요가 있는 지역으로, 정문과 동 번호, 정확한 숙소 주소와 이동 가능 시간을 확인하는 것이 특히 중요합니다. 장기 출장 숙소는 근무 일정에 따라 예약 시간이 유동적인 경우가 많으므로, 방문 희망 시간을 여유 있게 알려주시면 이동 동선을 맞춰 안내해 드립니다.`,
+  airport: (n) => `${n}은(는) 공항 인접 숙소 이용이 많은 지역으로, 숙소의 정확한 위치와 이동 동선, 야간 출입 가능 여부를 먼저 확인하는 것이 좋습니다. 이동 수단과 도착 숙소 주소를 함께 전달해 주시면 예상 소요 시간과 이동 가능 여부를 확인해 안내해 드립니다.`,
+  tourist: (n) => `${n}은(는) 리조트·호텔·펜션 등 관광 숙소가 넓게 분산되어 있어 숙소 간 이동 거리가 길어질 수 있습니다. 객실 정책과 외부 방문 가능 여부, 야간 이동 가능 시간을 예약 전에 확인해 두면, 성수기에도 방문 동선을 안정적으로 맞출 수 있습니다.`,
+  coastal: (n) => `${n}은(는) 해안 숙박권이 형성되어 있어 성수기에는 이동 동선이 혼잡해질 수 있습니다. 해안 관광 숙소는 주차와 야간 출입 여건이 도심과 다른 경우가 많으므로, 숙소 유형과 이동 가능 시간을 함께 확인하면 방문이 원활합니다.`,
+  newtown: (n) => `${n}은(는) 신도시 주거 단지가 넓게 조성된 지역으로, 대규모 아파트·오피스텔이 많아 동·호수와 공동현관 출입 방식 확인이 특히 중요합니다. 단지별로 방문자 등록 절차가 다를 수 있어, 예약 시 미리 확인해 두면 도착 후 안내가 빠릅니다.`,
+  university: (n) => `${n}은(는) 대학가를 중심으로 원룸·오피스텔이 밀집한 지역으로, 건물마다 공동현관 방식과 호수 체계가 달라 확인이 필요합니다. 정확한 주소와 연락 가능한 연락처를 함께 남겨두시면 방문 안내가 원활합니다.`,
+  admin: (n) => `${n}은(는) 행정·업무 기능이 모인 지역으로 오피스텔과 비즈니스호텔 이용이 많습니다. 업무 일정에 맞춘 예약이 많은 만큼, 희망 시간대와 숙소 유형을 미리 전달해 주시면 이동 동선을 맞춰 안내해 드립니다.`,
+  urban: (n) => `${n}은(는) 도심 상권과 주거·업무 시설이 함께 있는 지역으로 건물마다 출입 방식이 다양합니다. 도심 오피스텔·비즈니스호텔은 공동현관과 프런트 확인 방식을 미리 확인해 두면 방문이 원활하며, 주거지는 동·호수와 방문자 등록 여부를 함께 확인합니다.`,
+};
+
+/* 2,000~2,500자 지역 본문 — 지역별 고유 데이터(char/transport/stay/programs)를 엮어 생성 */
+function richArticle(ctx) {
+  const { name, lead, transportText, stayText = "", includes = "", stationNames = [], programs = [], profile } = ctx;
+  const prof = profile || profileOf(`${lead} ${stayText} ${transportText} ${includes}`);
+  const progItems = programs.map((s) => programBySlug[s]).filter(Boolean);
+  const progNames = progItems.map((p) => p.name).join(", ");
+  const stationLine = stationNames.length
+    ? `${name} 인근에서는 ${stationNames.join(", ")} 등이 주요 이동 거점입니다. `
+    : "";
+
+  return `
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+
+      <h2>${esc(name)} 생활권 특징</h2>
+      <p>${esc(name)}은(는) ${esc(lead)}${includes ? ` 주요 생활권으로는 ${esc(includes)} 등이 있으며, 같은 ${esc(name)} 안에서도 도심 상권과 주거지, 숙소 밀집 구역의 이용 동선이 조금씩 다릅니다.` : ""}</p>
+      <p>방문형 케어는 매장을 방문하는 방식과 달리 이용자가 머무는 위치와 숙소 유형에 따라 준비할 내용이 달라집니다. ${esc(name)}에서 예약을 계획하신다면 방문 주소와 건물 출입 방식, 예약 가능 시간을 먼저 확인해 두는 것이 좋으며, 방문 가능 여부는 실제 주소와 예약 조건을 확인한 뒤 안내해 드립니다.</p>
+
+      <h2>가까운 역·터미널·공항 기준</h2>
+      <p>${stationLine}${esc(transportText)}</p>
+      <p>실제 이동 시간은 출발지와 도착 숙소의 위치, 예약 시간대의 교통 상황에 따라 달라집니다. 정확한 도로명 주소와 건물명을 전달해 주시면 이동 동선과 예상 소요 시간, 이동 가능 여부를 함께 확인해 안내해 드립니다. 출구별·노선별로 페이지를 나누어 안내하지는 않으며, 언제나 최종 숙소 주소를 기준으로 확인합니다.</p>
+
+      <h2>호텔·숙소 이용 전 확인</h2>
+      <p>${esc(name)}의 호텔·숙소를 이용하실 때는 객실까지 방문이 가능한 숙소인지, 프런트에서 방문 확인을 요구하는지, 예약자명과 객실 번호가 정확한지, 야간 시간대 외부 방문객 출입이 허용되는지를 미리 확인해야 합니다. 특급호텔이나 레지던스는 보안 정책이 엄격한 경우가 있어, 예약 단계에서 숙소 정책을 함께 확인하면 방문이 원활합니다.</p>
+
+      <h2>오피스텔·아파트·자택 이용 전 확인</h2>
+      <p>오피스텔은 공동현관 출입 방식(비밀번호 또는 카드 태그)과 정확한 호수, 엘리베이터 층 제한 여부를 확인해야 하며, 아파트·자택은 동·호수와 공동현관, 방문자 등록 절차, 주차 가능 여부를 미리 확인하는 것이 좋습니다. ${stayText ? esc(stayText) + " " : ""}건물마다 출입 방식이 다르므로, 연락이 닿는 연락처를 함께 남겨두시면 도착 시 안내가 빠릅니다.</p>
+
+      <h2>산업단지·관광 숙소 이동 기준</h2>
+      <p>${esc(PROFILE_PARA[prof](name))}</p>
+
+      <h2>${esc(name)} 마사지 프로그램 선택 기준</h2>
+      <p>${esc(name)}에서는 ${esc(progNames)} 프로그램이 많이 이용됩니다. ${progItems.map((p) => `<strong>${esc(p.name)}</strong>은(는) ${esc(p.lead)}`).join(" ")}</p>
+      <p>코스는 60분 기본 컨디션·릴랙스 케어, 90분 아로마 포함 추천 구성, 120분 전신 집중 프리미엄 케어로 나뉩니다. 원하는 강도와 집중 부위, 이용 시간을 예약 시 전달해 주시면 ${esc(name)} 이용 목적에 맞게 안내해 드립니다.</p>
+
+      <h2>예약 전 체크리스트</h2>
+      <ul class="bullets">
+        <li>방문 주소(도로명)와 건물명, 정확한 동·호수</li>
+        <li>공동현관 출입 방식과 연락 가능한 연락처</li>
+        <li>원하는 프로그램과 코스 시간(60·90·120분)</li>
+        <li>예약 희망 시간대와 이동 가능 여부</li>
+        <li>숙소 유형과 야간 출입 가능 여부</li>
+      </ul>
+
+      <h2>개인정보 처리 기준</h2>
+      <p>${esc(name)} 예약 과정에서는 예약 확인과 연락에 필요한 최소한의 정보만 사용하며, 목적을 달성한 뒤에는 지체 없이 파기합니다. 자세한 기준은 <a class="inline" href="/policy/privacy/">개인정보 처리방침</a>에서 확인하실 수 있습니다.</p>
+
+      <h2>불법·선정적 서비스 불가 안내</h2>
+      <p>${esc(name)}에서도 불법·선정적 서비스는 제공하거나 안내하지 않으며, 합법적인 방문형 웰니스 안내만을 목적으로 합니다. 자세한 내용은 <a class="inline" href="/policy/prohibited/">불법·선정적 서비스 불가 안내</a>를 참고해 주세요.</p>
+
+    </div></div></section>`;
+}
+
 /* ============================================================
    HOME
    ============================================================ */
@@ -163,12 +243,18 @@ function buildRegions() {
     })}
     ${breadcrumbs(crumbs)}
 
-    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
-      <h2>이 지역의 생활권 특징</h2>
-      <p>${esc(r.character)}</p>
-      <h2>가까운 역·터미널·공항 기준</h2>
-      <p>${esc(r.transport)}</p>
-      ${districtChips.length ? `<h2>핵심 시·군·구</h2><p>주요 행정구역별 안내 페이지입니다.</p>${relatedChips(districtChips)}` : ""}
+    ${richArticle({
+      name: r.name.replace("권", ""),
+      lead: r.character,
+      transportText: r.transport,
+      stayText: "",
+      includes: r.zones.map((z) => z.label).join(", "),
+      stationNames: rStations.slice(0, 4).map((s) => s.name),
+      programs: r.programs,
+    })}
+
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      ${districtChips.length ? `<h2>${esc(r.name)} 핵심 시·군·구</h2><p>주요 행정구역별 안내 페이지입니다.</p>${relatedChips(districtChips)}` : ""}
       ${stationChips.length ? `<h2>역·터미널·공항 거점</h2><p>거점 인접 숙소 이용 기준 안내입니다.</p>${relatedChips(stationChips)}` : ""}
     </div></div></section>
 
@@ -191,7 +277,6 @@ function buildRegions() {
       ${relatedChips(otherRegions)}
     </div></div></section>
 
-    ${noticeBar()}
     ${faqBlock(faq)}`;
 
     emit(`/${r.slug}/`, {
@@ -240,17 +325,7 @@ function buildDistricts() {
     ${hero({ eyebrow: r.keyword, h1: `${d.name} 출장마사지 안내`, lead: d.char, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
     ${breadcrumbs(crumbs)}
 
-    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
-      <h2>${esc(d.name)} 생활권 특징</h2>
-      <p>${esc(d.char)}</p>
-      <h2>가까운 역·터미널·공항 기준</h2>
-      <p>${esc(d.transport)} 정확한 주소를 전달하면 이동 동선과 이동 가능 시간을 안내받을 수 있습니다.</p>
-      <h2>${esc(d.name)} 숙소 유형 안내</h2>
-      <p>${esc(d.stay)}</p>
-      ${stayCheckBlock()}
-      <h2>마사지 프로그램 선택 기준</h2>
-      <p>${esc(d.name)}에서는 ${esc(d.programs.map((s) => programBySlug[s].name).join(", "))} 선호도가 높은 편입니다. 60·90·120분 코스 중 원하는 구성과 집중 부위를 예약 시 전달해 주세요.</p>
-    </div></div></section>
+    ${richArticle({ name: d.name, lead: d.char, transportText: d.transport, stayText: d.stay, stationNames: stationsByRegion(r.slug).slice(0, 3).map((s) => s.name), programs: d.programs })}
 
     ${priceTable()}
 
@@ -264,7 +339,6 @@ function buildDistricts() {
       <h2>관련 지역 보기</h2>${relatedChips(related)}
     </div></div></section>
 
-    ${noticeBar()}
     ${faqBlock(faq)}`;
 
     emit(path, {
@@ -307,25 +381,30 @@ function buildStations() {
       { q: `${s.name} 인근 숙소도 이용할 수 있나요?`, a: `${s.name} 인근 숙소는 정확한 주소와 이동 가능 시간, 숙소 유형을 확인한 뒤 안내합니다.` },
       ...COMMON_FAQ.slice(1),
     ];
+    const zoneName = zoneArea ? zoneArea.name : `${r.name}`;
     const body = `
     ${hero({ eyebrow: `${r.keyword} · ${s.kind}`, h1: `${s.name} 인근 출장마사지 안내`, lead: s.char, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "거점 전체", href: "/station/" }] })}
     ${breadcrumbs(crumbs)}
-    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
-      <h2>${esc(s.name)} 거점 특징</h2>
-      <p>${esc(s.char)}</p>
-      <h2>거점 인접 숙소 이용 기준</h2>
-      <p>${esc(s.name)} 인근은 역·터미널·공항 접근성이 좋아 출장·환승 이용이 많은 편입니다. 출구별·노선별 안내가 아니라 정확한 숙소 주소를 기준으로 이동 동선을 확인합니다.</p>
-      ${stayCheckBlock()}
-    </div></div></section>
+
+    ${richArticle({
+      name: `${s.name} 인근`,
+      lead: `${s.char} ${s.name}은(는) ${zoneName} 생활권과 이어지는 ${s.kind}입니다.`,
+      transportText: `${s.name}은(는) ${s.kind}로서 인근 숙소 접근성이 좋아 출장·환승 이용이 많은 거점입니다. ${s.name}을(를) 기준으로 이동 동선을 확인하되, 안내는 언제나 최종 숙소 주소를 기준으로 진행합니다.`,
+      stayText: `${s.name} 인근은 역세권 비즈니스호텔과 오피스텔이 많아`,
+      stationNames: [],
+      programs: s.programs,
+      profile: profileOf(`${s.char} ${s.kind}`),
+    })}
+
     ${priceTable()}
     <section class="section" style="padding-top:0"><div class="wrap">
       <div class="section-head"><span class="eyebrow">Programs</span><h2>추천 프로그램</h2></div>
       ${cardGrid(progCards, 3)}
     </div></section>
     <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>Who, How, Why</h2>${whoHowWhy(`${s.name} 인근`)}
       <h2>관련 지역 보기</h2>${relatedChips(related)}
     </div></div></section>
-    ${noticeBar()}
     ${faqBlock(faq)}`;
 
     emit(path, {
@@ -357,20 +436,7 @@ function buildAreas() {
     ${hero({ eyebrow: `${r.keyword}`, h1: `${a.name} 출장마사지 안내`, lead: a.direction, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
     ${breadcrumbs(crumbs)}
 
-    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
-      <h2>이 생활권의 특징</h2>
-      <p>${esc(a.direction)} 포함 지역은 ${esc(a.includes)}입니다.</p>
-      <h2>가까운 역·터미널·공항 기준</h2>
-      <p>${esc(a.stations.join(", "))}을(를) 기준으로 이동 동선과 시간을 확인합니다. 정확한 주소를 전달하면 이동 가능 시간을 안내받을 수 있습니다.</p>
-      <h2>호텔·오피스텔·자택 이용 전 확인</h2>
-      <ul class="bullets">
-        <li>호텔·숙소: 객실 출입 가능 여부, 프런트 확인 방식, 예약자명, 야간 출입 가능 여부</li>
-        <li>오피스텔: 공동현관 출입 방식(비밀번호·카드), 정확한 호수, 엘리베이터 층 제한</li>
-        <li>아파트·자택: 동·호수, 공동현관, 방문자 등록 여부, 주차 가능 여부</li>
-      </ul>
-      <h2>마사지 프로그램 선택 기준</h2>
-      <p>이 생활권에서는 ${esc(a.programs.map((s) => programBySlug[s].name).join(", "))} 선호도가 높은 편입니다. 원하는 강도와 집중 부위를 예약 시 전달해 주세요.</p>
-    </div></div></section>
+    ${richArticle({ name: a.name, lead: a.direction, transportText: `${a.stations.join(", ")}을(를) 기준으로 이동 동선과 시간을 확인합니다.`, stayText: "", includes: a.includes, stationNames: a.stations, programs: a.programs })}
 
     ${priceTable()}
 
@@ -384,7 +450,6 @@ function buildAreas() {
       ${siblingZones.length ? `<h2>관련 지역 보기</h2>${relatedChips(siblingZones.concat([{ label: `${r.name} 전체`, href: `/${r.slug}/` }]))}` : ""}
     </div></div></section>
 
-    ${noticeBar()}
     ${faqBlock(faq)}`;
 
     emit(`/area/${a.slug}/`, {
