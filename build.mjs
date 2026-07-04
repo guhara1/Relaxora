@@ -1,0 +1,474 @@
+import { mkdirSync, writeFileSync, rmSync, cpSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { site } from "./data/site.mjs";
+import { regions, regionBySlug } from "./data/regions.mjs";
+import { areas, areaBySlug } from "./data/areas.mjs";
+import { programs, programBySlug } from "./data/programs.mjs";
+import { usePlaces, checks } from "./data/guides.mjs";
+import {
+  layout, esc, priceTable, breadcrumbs, faqBlock, whoHowWhy, noticeBar,
+} from "./src/render.mjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const OUT = join(__dirname, "dist");
+
+/* ---------- writer + description guard ---------- */
+const pages = [];
+function emit(path, page) {
+  if (page.desc && [...page.desc].length > 80) {
+    console.warn(`⚠︎  description > 80자 (${[...page.desc].length}): ${path}`);
+  }
+  page.path = path;
+  const html = layout(page);
+  const dir = path === "/" ? OUT : join(OUT, path);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "index.html"), html);
+  if (!page.noindex) pages.push(path);
+}
+
+const HOME = { label: "홈", href: "/" };
+const HERO = "/assets/images/hero.webp";
+
+/* ---------- shared FAQ ---------- */
+const COMMON_FAQ = [
+  { q: "예약 전에 무엇을 확인하나요?", a: "실제 방문 주소, 가까운 생활권, 예약 가능 시간, 이동 기준, 숙소 유형을 확인한 뒤 안내합니다." },
+  { q: "호텔이나 리조트에서도 이용할 수 있나요?", a: "숙소 정책, 객실 출입 가능 여부, 프런트 확인 방식, 예약자명, 야간 출입 가능 여부를 먼저 확인해야 합니다." },
+  { q: "불법·선정적 서비스도 가능한가요?", a: "불법·선정적 서비스는 제공하거나 안내하지 않습니다." },
+  { q: "개인정보는 어떻게 처리하나요?", a: "예약 확인과 연락에 필요한 최소 정보만 확인하며, 개인정보 처리 기준 페이지로 연결합니다." },
+];
+
+/* ---------- hero block ---------- */
+function hero({ eyebrow, h1, lead, ctas = [] }) {
+  const btns = ctas.map((c, i) =>
+    `<a class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} btn-lg" href="${c.href}">${esc(c.label)}</a>`).join("");
+  return `
+  <section class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-inner"><div class="wrap">
+      <span class="eyebrow">${esc(eyebrow)}</span>
+      <h1>${esc(h1)}</h1>
+      <p class="lead">${esc(lead)}</p>
+      <div class="hero-cta">${btns}</div>
+    </div></div>
+  </section>`;
+}
+
+function cardGrid(items, cols = 3) {
+  return `<div class="grid grid-${cols}">${items.map((it) => `
+    <a class="card" href="${it.href}">
+      ${it.icon ? `<div class="card-icon">${it.icon}</div>` : ""}
+      <h3>${esc(it.title)}</h3>
+      <p>${esc(it.text)}</p>
+      <span class="card-link">${esc(it.cta || "자세히 보기")}</span>
+    </a>`).join("")}</div>`;
+}
+
+function relatedChips(items) {
+  return `<div class="related">${items.map((i) => `<a class="chip" href="${i.href}">${esc(i.label)}</a>`).join("")}</div>`;
+}
+
+/* ============================================================
+   HOME
+   ============================================================ */
+function buildHome() {
+  const regionCards = regions.map((r) => ({
+    href: `/${r.slug}/`, title: r.name, text: r.desc, cta: `${r.name} 보기`,
+  }));
+  const programCards = programs.slice(0, 9).map((p) => ({
+    href: `/program/${p.slug}/`, title: p.name, text: p.lead,
+  }));
+  const zoneChips = areas.map((a) => ({ label: a.name.replace(/권$/, ""), href: `/area/${a.slug}/` }));
+  const useCards = usePlaces.map((u) => ({ href: `/use/${u.slug}/`, title: u.name, text: u.desc }));
+
+  const body = `
+    ${hero({
+      eyebrow: "영남·제주 출장마사지",
+      h1: "영남·제주 출장마사지 · 부산·대구·창원·경남·경북·제주 생활권 안내",
+      lead: "부산 해운대, 대구 동성로, 창원 상남, 김해·양산, 포항·구미, 제주·서귀포 등 주요 생활권과 호텔·오피스텔·리조트·자택 이용 전 확인사항을 안내합니다.",
+      ctas: [
+        { label: "부산권 보기", href: "/busan/" }, { label: "제주권 보기", href: "/jeju/" },
+        { label: "마사지 프로그램", href: "/program/" }, { label: "예약 전 확인", href: "/check/" },
+      ],
+    })}
+
+    <section class="section"><div class="wrap"><div class="article" style="text-align:center;max-width:760px">
+      <span class="eyebrow">Overview</span>
+      <h2 style="font-size:32px;margin-bottom:16px">영남·제주권은 지역마다 이용 기준이 다릅니다</h2>
+      <p style="color:var(--text-muted)">부산은 해안 숙소와 도심 상권, 대구는 내륙 광역시와 업무·주거 생활권, 창원은 산업도시와 도심 상권, 경남은 해안·조선·항공·신도시 생활권, 경북은 동해안·산업·관광 숙소, 제주는 공항·리조트·펜션·해안 숙소 기준이 중요합니다.</p>
+    </div></div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Regions</span><h2>권역별 안내</h2><p>부산·대구·창원·경남·경북·제주 6개 권역을 생활권 단위로 안내합니다.</p></div>
+      ${cardGrid(regionCards, 3)}
+    </div></section>
+
+    ${priceTable()}
+
+    <section class="section"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Programs</span><h2>마사지 프로그램 안내</h2><p>스웨디시·타이마사지·아로마테라피 등 프로그램별 특징과 지역을 함께 안내합니다.</p></div>
+      ${cardGrid(programCards, 3)}
+    </div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Living zones</span><h2>주요 생활권 바로가기</h2><p>14개 광역 생활권을 이동 거점과 숙소 유형 기준으로 안내합니다.</p></div>
+      ${relatedChips(zoneChips)}
+    </div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Where</span><h2>이용 장소별 확인 기준</h2><p>자택·호텔·오피스텔·산업단지·리조트 등 장소별 확인사항을 안내합니다.</p></div>
+      ${cardGrid(useCards, 4)}
+    </div></section>
+
+    ${noticeBar()}
+    ${faqBlock(COMMON_FAQ)}
+  `;
+
+  emit("/", {
+    title: "영남·제주 출장마사지｜부산·대구·창원·경남·경북·제주 홈타이 안내",
+    desc: "영남·제주 출장마사지·홈타이 예약 전 부산·대구·창원·경남·경북·제주 주요 생활권과 숙소 이용 기준을 안내합니다.",
+    image: HERO, crumbs: [HOME], faq: COMMON_FAQ, body,
+  });
+}
+
+/* ============================================================
+   REGION HUBS
+   ============================================================ */
+function buildRegions() {
+  for (const r of regions) {
+    const crumbs = [HOME, { label: r.name, href: `/${r.slug}/` }];
+    const zoneCards = r.zones.map((z) => ({ href: z.href, title: z.label, text: (areaBySlug[z.href.split("/")[2]] || {}).desc || "생활권 안내" }));
+    const districtChips = r.districts.map((d) => ({ label: d.label, href: d.href }));
+    const progCards = r.programs.map((slug) => {
+      const p = programBySlug[slug];
+      return { href: `/program/${p.slug}/`, title: p.name, text: p.lead };
+    });
+    const otherRegions = regions.filter((x) => x.slug !== r.slug).map((x) => ({ label: x.name, href: `/${x.slug}/` }));
+
+    const faq = [
+      { q: `${r.name} 전 지역 방문이 가능한가요?`, a: "실제 방문 주소, 가까운 생활권, 예약 가능 시간, 이동 기준, 숙소 유형을 확인한 뒤 안내합니다." },
+      ...COMMON_FAQ.slice(1),
+    ];
+
+    const body = `
+    ${hero({
+      eyebrow: r.keyword, h1: r.h1, lead: r.lead,
+      ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "마사지 프로그램", href: "/program/" }, { label: "예약 전 확인", href: "/check/" }],
+    })}
+    ${breadcrumbs(crumbs)}
+
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+      <h2>이 지역의 생활권 특징</h2>
+      <p>${esc(r.character)}</p>
+      <h2>가까운 역·터미널·공항 기준</h2>
+      <p>${esc(r.transport)}</p>
+      ${r.districts.length ? `<h2>핵심 시·군·구</h2><p>주요 행정구역별 안내 페이지입니다.</p>${relatedChips(districtChips)}` : ""}
+    </div></div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Living zones</span><h2>${esc(r.name)} 핵심 생활권</h2></div>
+      ${cardGrid(zoneCards, 3)}
+    </div></section>
+
+    ${priceTable()}
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Programs</span><h2>${esc(r.name)} 추천 프로그램</h2></div>
+      ${cardGrid(progCards, 3)}
+    </div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>Who, How, Why</h2>
+      ${whoHowWhy(r.name)}
+      <h2>관련 지역 보기</h2>
+      ${relatedChips(otherRegions)}
+    </div></div></section>
+
+    ${noticeBar()}
+    ${faqBlock(faq)}`;
+
+    emit(`/${r.slug}/`, {
+      title: `${r.h1}｜${site.brand}`, desc: r.desc, image: HERO, crumbs, faq, body,
+    });
+
+    // simple district stubs (noindex until real content is added)
+    for (const d of r.districts) {
+      const dslug = d.href.replace(/\//g, "").replace(r.slug, "");
+      buildDistrict(r, d, crumbs);
+    }
+  }
+}
+
+function buildDistrict(r, d, parentCrumbs) {
+  const crumbs = [...parentCrumbs, { label: d.label, href: d.href }];
+  const body = `
+    ${hero({ eyebrow: r.keyword, h1: `${r.name.replace("권", "")} ${d.label} 출장마사지 안내`, lead: `${d.label} 생활권의 숙소 유형과 예약 전 확인사항을 안내합니다. 상세 콘텐츠는 순차적으로 보강됩니다.`, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
+    ${breadcrumbs(crumbs)}
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+      <p>${esc(d.label)} 지역 안내 페이지입니다. 정확한 방문 가능 여부는 실제 주소와 예약 조건 확인 후 안내합니다.</p>
+      <h2>관련 생활권</h2>${relatedChips(r.zones.map((z) => ({ label: z.label, href: z.href })))}
+    </div></div></section>
+    ${noticeBar()}`;
+  // noindex: thin stub per spec (본문 2,000자 미만 → noindex)
+  emit(d.href, {
+    title: `${d.label} 출장마사지 안내｜${r.name}`,
+    desc: `${d.label} 출장마사지 예약 전 생활권과 숙소 유형, 이동 기준을 안내합니다.`,
+    image: HERO, crumbs, noindex: true, body,
+  });
+}
+
+/* ============================================================
+   AREAS (14 living zones)
+   ============================================================ */
+function buildAreas() {
+  for (const a of areas) {
+    const r = regionBySlug[a.region];
+    const crumbs = [HOME, { label: r.name, href: `/${r.slug}/` }, { label: a.name, href: `/area/${a.slug}/` }];
+    const progCards = a.programs.map((slug) => {
+      const p = programBySlug[slug];
+      return { href: `/program/${p.slug}/`, title: p.name, text: p.lead };
+    });
+    const siblingZones = r.zones.filter((z) => z.href !== `/area/${a.slug}/`).map((z) => ({ label: z.label, href: z.href }));
+    const faq = [
+      { q: `${a.name}에서도 방문이 가능한가요?`, a: `${a.includes} 등 생활권의 정확한 주소와 이동 가능 시간, 숙소 유형을 확인한 뒤 안내합니다.` },
+      ...COMMON_FAQ.slice(1),
+    ];
+
+    const body = `
+    ${hero({ eyebrow: `${r.keyword}`, h1: `${a.name} 출장마사지 안내`, lead: a.direction, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: `${r.name} 메인`, href: `/${r.slug}/` }] })}
+    ${breadcrumbs(crumbs)}
+
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+      <h2>이 생활권의 특징</h2>
+      <p>${esc(a.direction)} 포함 지역은 ${esc(a.includes)}입니다.</p>
+      <h2>가까운 역·터미널·공항 기준</h2>
+      <p>${esc(a.stations.join(", "))}을(를) 기준으로 이동 동선과 시간을 확인합니다. 정확한 주소를 전달하면 이동 가능 시간을 안내받을 수 있습니다.</p>
+      <h2>호텔·오피스텔·자택 이용 전 확인</h2>
+      <ul class="bullets">
+        <li>호텔·숙소: 객실 출입 가능 여부, 프런트 확인 방식, 예약자명, 야간 출입 가능 여부</li>
+        <li>오피스텔: 공동현관 출입 방식(비밀번호·카드), 정확한 호수, 엘리베이터 층 제한</li>
+        <li>아파트·자택: 동·호수, 공동현관, 방문자 등록 여부, 주차 가능 여부</li>
+      </ul>
+      <h2>마사지 프로그램 선택 기준</h2>
+      <p>이 생활권에서는 ${esc(a.programs.map((s) => programBySlug[s].name).join(", "))} 선호도가 높은 편입니다. 원하는 강도와 집중 부위를 예약 시 전달해 주세요.</p>
+    </div></div></section>
+
+    ${priceTable()}
+
+    <section class="section" style="padding-top:0"><div class="wrap">
+      <div class="section-head"><span class="eyebrow">Programs</span><h2>추천 프로그램</h2></div>
+      ${cardGrid(progCards, 3)}
+    </div></section>
+
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>Who, How, Why</h2>${whoHowWhy(a.name)}
+      ${siblingZones.length ? `<h2>관련 지역 보기</h2>${relatedChips(siblingZones.concat([{ label: `${r.name} 전체`, href: `/${r.slug}/` }]))}` : ""}
+    </div></div></section>
+
+    ${noticeBar()}
+    ${faqBlock(faq)}`;
+
+    emit(`/area/${a.slug}/`, {
+      title: `${a.name} 출장마사지 안내｜${site.brand}`, desc: a.desc, image: HERO, crumbs, faq, body,
+    });
+  }
+}
+
+/* ============================================================
+   PROGRAMS
+   ============================================================ */
+function buildPrograms() {
+  const crumbs0 = [HOME, { label: "마사지 프로그램", href: "/program/" }];
+  const cards = programs.map((p) => ({ href: `/program/${p.slug}/`, title: p.name, text: p.lead }));
+  const body = `
+    ${hero({ eyebrow: "Programs", h1: "영남·제주 출장마사지 프로그램 안내", lead: "스웨디시·타이마사지·아로마테라피·스포츠 마사지·발마사지 등 프로그램별 특징과 지역별 이용 기준을 안내합니다.", ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "지역별 안내", href: "/" }] })}
+    ${breadcrumbs(crumbs0)}
+    <section class="section" style="padding-top:24px"><div class="wrap">${cardGrid(cards, 3)}</div></section>
+    ${priceTable()}
+    ${noticeBar()}`;
+  emit("/program/", {
+    title: "마사지 프로그램 안내｜스웨디시·타이·아로마｜" + site.brand,
+    desc: "출장마사지 프로그램별 특징과 스웨디시·타이·아로마·스포츠·발마사지 지역별 이용 기준을 안내합니다.",
+    image: HERO, crumbs: crumbs0, body,
+  });
+
+  for (const p of programs) {
+    const crumbs = [...crumbs0, { label: p.name, href: `/program/${p.slug}/` }];
+    const regionChips = p.regions.map((r) => ({ label: r, href: "/" }));
+    const others = programs.filter((x) => x.slug !== p.slug).slice(0, 6).map((x) => ({ label: x.name, href: `/program/${x.slug}/` }));
+    const faq = [
+      { q: `${p.name}는 어떤 분에게 맞나요?`, a: p.body },
+      ...COMMON_FAQ.slice(2),
+    ];
+    const body2 = `
+    ${hero({ eyebrow: "Program", h1: `${p.name} 출장마사지 안내`, lead: p.lead, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "프로그램 전체", href: "/program/" }] })}
+    ${breadcrumbs(crumbs)}
+    <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+      <h2>${esc(p.name)} 특징</h2><p>${esc(p.body)}</p>
+      <h2>코스 선택 기준</h2>
+      <p>60분은 기본 컨디션·릴랙스 케어, 90분은 아로마 포함 추천 구성, 120분은 전신 집중 프리미엄 케어로 구성됩니다. 원하는 집중 부위와 강도를 예약 시 전달해 주세요.</p>
+      <h2>주요 이용 지역</h2>${relatedChips(regionChips)}
+    </div></div></section>
+    ${priceTable()}
+    <section class="section" style="padding-top:0"><div class="wrap"><div class="article">
+      <h2>다른 프로그램 보기</h2>${relatedChips(others)}
+    </div></div></section>
+    ${noticeBar()}
+    ${faqBlock(faq)}`;
+    // men/women/night: keep index; couple/lomi also index (real content)
+    emit(`/program/${p.slug}/`, {
+      title: `${p.name} 출장마사지 안내｜${site.brand}`, desc: p.desc, image: HERO, crumbs, faq, body: body2,
+    });
+  }
+}
+
+/* ============================================================
+   USE / CHECK guide pages
+   ============================================================ */
+function buildGuides() {
+  // Use index
+  const useCrumbs = [HOME, { label: "이용 장소 안내", href: "/use/" }];
+  emit("/use/", {
+    title: "이용 장소별 안내｜자택·호텔·오피스텔·산업단지｜" + site.brand,
+    desc: "자택·호텔·오피스텔·산업단지·리조트 등 이용 장소별 출장마사지 예약 전 확인사항을 안내합니다.",
+    image: HERO, crumbs: useCrumbs,
+    body: `${hero({ eyebrow: "Where", h1: "이용 장소별 확인 기준", lead: "자택·호텔·오피스텔·산업단지·리조트 등 장소마다 출입 방식과 확인사항이 다릅니다.", ctas: [{ label: "예약 문의", href: site.phoneHref }] })}
+      ${breadcrumbs(useCrumbs)}
+      <section class="section" style="padding-top:24px"><div class="wrap">${cardGrid(usePlaces.map((u) => ({ href: `/use/${u.slug}/`, title: u.name, text: u.desc })), 4)}</div></section>
+      ${noticeBar()}`,
+  });
+  for (const u of usePlaces) {
+    const crumbs = [...useCrumbs, { label: u.name, href: `/use/${u.slug}/` }];
+    emit(`/use/${u.slug}/`, {
+      title: `${u.name} 출장마사지 이용 안내｜${site.brand}`, desc: u.desc, image: HERO, crumbs,
+      body: `${hero({ eyebrow: "이용 장소", h1: `${u.name} 출장마사지 이용 안내`, lead: u.desc, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "이용 장소 전체", href: "/use/" }] })}
+        ${breadcrumbs(crumbs)}
+        <section class="section" style="padding-top:24px"><div class="wrap"><div class="article"><p>${esc(u.body)}</p>
+          <h2>예약 전 확인</h2>${relatedChips(checks.map((c) => ({ label: c.name, href: `/check/${c.slug}/` })))}
+        </div></div></section>
+        ${noticeBar()}`,
+    });
+  }
+
+  // Check index
+  const chkCrumbs = [HOME, { label: "예약 전 확인", href: "/check/" }];
+  emit("/check/", {
+    title: "예약 전 확인 안내｜주소·건물 출입·이동 기준｜" + site.brand,
+    desc: "출장마사지 예약 전 방문 주소·건물 출입·이동 기준·개인정보 확인사항을 안내합니다.",
+    image: HERO, crumbs: chkCrumbs,
+    body: `${hero({ eyebrow: "Check", h1: "예약 전 확인 안내", lead: "정확한 안내를 위해 방문 주소, 건물 출입, 이동 기준, 개인정보 처리 기준을 예약 전에 확인합니다.", ctas: [{ label: "예약 문의", href: site.phoneHref }] })}
+      ${breadcrumbs(chkCrumbs)}
+      <section class="section" style="padding-top:24px"><div class="wrap">${cardGrid(checks.map((c) => ({ href: `/check/${c.slug}/`, title: c.name, text: c.desc })), 3)}</div></section>
+      ${noticeBar()}`,
+  });
+  for (const c of checks) {
+    const crumbs = [...chkCrumbs, { label: c.name, href: `/check/${c.slug}/` }];
+    emit(`/check/${c.slug}/`, {
+      title: `${c.name}｜예약 전 확인｜${site.brand}`, desc: c.desc, image: HERO, crumbs,
+      body: `${hero({ eyebrow: "예약 전 확인", h1: c.name, lead: c.desc, ctas: [{ label: "예약 문의", href: site.phoneHref }, { label: "예약 전 확인 전체", href: "/check/" }] })}
+        ${breadcrumbs(crumbs)}
+        <section class="section" style="padding-top:24px"><div class="wrap"><div class="article"><p>${esc(c.body)}</p></div></div></section>
+        ${noticeBar()}`,
+    });
+  }
+}
+
+/* ============================================================
+   POLICY / CONTACT / SITEMAP
+   ============================================================ */
+function staticPage(path, title, desc, h1, paragraphs, extra = "") {
+  const crumbs = [HOME, { label: h1, href: path }];
+  emit(path, {
+    title: `${title}｜${site.brand}`, desc, image: HERO, crumbs,
+    body: `${hero({ eyebrow: "Info", h1, lead: desc, ctas: [{ label: "예약 문의", href: site.phoneHref }] })}
+      ${breadcrumbs(crumbs)}
+      <section class="section" style="padding-top:24px"><div class="wrap"><div class="article">
+        ${paragraphs.map((p) => (p.startsWith("##") ? `<h2>${esc(p.slice(2).trim())}</h2>` : `<p>${esc(p)}</p>`)).join("")}
+        ${extra}
+      </div></div></section>
+      ${noticeBar()}`,
+  });
+}
+
+function buildStatic() {
+  staticPage("/policy/operation/", "운영 기준 안내", "출장마사지 운영 기준과 예약·이동·개인정보 처리 원칙을 안내합니다.",
+    "운영 기준 안내",
+    [
+      "이 사이트는 부산·대구·창원·경남·경북·제주 지역 방문형 웰니스 서비스 이용 전 확인사항을 안내하기 위한 지역 안내 사이트입니다.",
+      "## 예약·이동 기준", "방문 가능 여부는 실제 주소와 예약 조건 확인 후 안내하며, 지역·시간대·이동 거리에 따라 상담 시 최종 확인됩니다.",
+      "## 콘텐츠 작성·검수", "공식 행정구역 자료와 실제 예약 전 확인 항목을 기준으로 작성하며, AI 보조 도구를 사용하더라도 최종 문구는 사람이 검수하고 중복·과장·허위 표현을 제거합니다.",
+      "## 금지 사항", "무조건 가능·즉시 가능 보장·최저가·1위 등 과장 표현과 가짜 후기, 허위 평점은 사용하지 않습니다.",
+    ]);
+
+  staticPage("/policy/prohibited/", "불법·선정적 서비스 불가 안내", "불법·선정적 서비스는 제공하거나 안내하지 않는다는 운영 원칙을 안내합니다.",
+    "불법·선정적 서비스 불가 안내",
+    [
+      "본 사이트는 합법적인 방문형 웰니스 안내만을 목적으로 하며, 불법·선정적 서비스는 제공하거나 안내하지 않습니다.",
+      "선정적·불법을 암시하는 표현, 은밀 서비스, 허위 후기 등은 콘텐츠에 사용하지 않습니다.",
+      "방문 가능 여부는 실제 주소와 예약 조건 확인 후 안내합니다.",
+    ]);
+
+  staticPage("/policy/privacy/", "개인정보 처리방침", "예약 확인·연락에 필요한 최소 개인정보만 사용하는 처리 기준을 안내합니다.",
+    "개인정보 처리방침",
+    [
+      "본 사이트는 예약 확인과 연락에 필요한 최소한의 정보만 사용합니다.",
+      "## 수집 항목", "예약 확인을 위한 연락처와 방문 관련 정보(주소·시간 등)에 한합니다.",
+      "## 이용 목적", "예약 확인, 이동 안내, 고객 연락 목적으로만 사용하며 목적 달성 후 지체 없이 파기합니다.",
+      "## 제3자 제공", "법령에 근거하거나 이용자가 동의한 경우를 제외하고 제3자에게 제공하지 않습니다.",
+    ]);
+
+  staticPage("/contact/", "문의하기", "전화·텔레그램을 통한 예약 문의와 제휴·제작 문의 방법을 안내합니다.",
+    "문의하기",
+    [
+      "예약 문의는 전화로, 웹사이트 제작·제휴 문의는 텔레그램으로 받고 있습니다.",
+      "## 전화예약", `${site.brand} 전화예약: ${site.phone}`,
+      "## 텔레그램 문의", "웹사이트 제작문의와 제휴문의는 하단 푸터의 텔레그램 버튼을 이용해 주세요.",
+    ],
+    `<div class="hero-cta" style="margin-top:20px">
+       <a class="btn btn-primary btn-lg" href="${site.phoneHref}">전화예약 ${esc(site.phone)}</a>
+       <a class="btn btn-ghost btn-lg" href="${site.telegramBuild}" target="_blank" rel="noopener">웹사이트 제작문의</a>
+       <a class="btn btn-ghost btn-lg" href="${site.telegramPartner}" target="_blank" rel="noopener">제휴문의</a>
+     </div>`);
+
+  // HTML sitemap page
+  const groups = [
+    ["권역", regions.map((r) => ({ label: r.name, href: `/${r.slug}/` }))],
+    ["생활권", areas.map((a) => ({ label: a.name, href: `/area/${a.slug}/` }))],
+    ["프로그램", programs.map((p) => ({ label: p.name, href: `/program/${p.slug}/` }))],
+    ["이용 장소", usePlaces.map((u) => ({ label: u.name, href: `/use/${u.slug}/` }))],
+    ["예약 전 확인", checks.map((c) => ({ label: c.name, href: `/check/${c.slug}/` }))],
+  ];
+  const smBody = groups.map(([t, items]) => `<h2>${t}</h2>${relatedChips(items)}`).join("");
+  staticPage("/sitemap-page/", "사이트맵", "영남·제주 출장마사지 안내 사이트의 전체 페이지 목록입니다.",
+    "사이트맵", ["전체 페이지를 한눈에 확인할 수 있습니다."], smBody);
+}
+
+/* ============================================================
+   sitemap.xml + robots.txt
+   ============================================================ */
+function buildSitemap() {
+  const urls = pages.map((p) => `  <url><loc>${site.domain.replace(/\/$/, "")}${p}</loc></url>`).join("\n");
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemap.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`
+    .replace("sitemap.org/schemas", "sitemaps.org/schemas");
+  writeFileSync(join(OUT, "sitemap.xml"), xml);
+  writeFileSync(join(OUT, "robots.txt"),
+    `User-agent: *\nAllow: /\nSitemap: ${site.domain.replace(/\/$/, "")}/sitemap.xml\n`);
+}
+
+/* ============================================================
+   RUN
+   ============================================================ */
+rmSync(OUT, { recursive: true, force: true });
+mkdirSync(OUT, { recursive: true });
+cpSync(join(__dirname, "assets"), join(OUT, "assets"), { recursive: true });
+
+buildHome();
+buildRegions();
+buildAreas();
+buildPrograms();
+buildGuides();
+buildStatic();
+buildSitemap();
+
+console.log(`✓ built ${pages.length} indexed pages → dist/`);

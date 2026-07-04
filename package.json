@@ -1,0 +1,14 @@
+{
+  "name": "relaxora",
+  "version": "1.0.0",
+  "description": "간다GO — 영남·제주 출장마사지 지역 안내 정적 사이트 생성기",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "keywords": ["출장마사지", "영남", "제주", "SEO"],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "sharp": "^0.35.3"
+  }
+}
