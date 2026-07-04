@@ -1,0 +1,6 @@
+# Cloudflare Pages 설정
+# 완성된 정적 사이트는 dist/ 에 이미 빌드되어 커밋되어 있습니다.
+# 이 파일이 있으면 Cloudflare Pages가 배포 폴더를 dist/ 로 인식합니다.
+name = "relaxora"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-01"
