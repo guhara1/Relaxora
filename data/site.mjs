@@ -3,7 +3,7 @@ export const site = {
   brand: "간다GO",
   brandEn: "GANDAGO",
   tagline: "영남·제주 출장마사지 안내",
-  domain: "https://www.relaxora.co.kr", // ← 실제 도메인으로 교체하세요
+  domain: "https://relaxora.pages.dev", // 운영 도메인
   phone: "0508-202-4719",
   phoneHref: "tel:0508-202-4719",
   // 텔레그램 채널/문의 링크 — 실제 핸들로 교체하세요.
