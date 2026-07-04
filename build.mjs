@@ -99,6 +99,46 @@ const PROFILE_PARA = {
   urban: (n) => `${n}은(는) 도심 상권과 주거·업무 시설이 함께 있는 지역으로 건물마다 출입 방식이 다양합니다. 도심 오피스텔·비즈니스호텔은 공동현관과 프런트 확인 방식을 미리 확인해 두면 방문이 원활하며, 주거지는 동·호수와 방문자 등록 여부를 함께 확인합니다.`,
 };
 
+/* 지역 고유 소지역(동네) 추출 — 도입부의 A·B·C 나열에서 뽑아 메타에 활용 */
+function keySpots(primary, fallback, n = 2) {
+  for (const src of [primary, fallback]) {
+    if (!src) continue;
+    const m = src.match(/([가-힣A-Za-z0-9]+(?:[·,]\s?[가-힣A-Za-z0-9]+)+)/);
+    if (m) return m[1].split(/[·,]/).map((s) => s.trim()).filter(Boolean).slice(0, n);
+  }
+  return [];
+}
+
+/* 80자 이내로 맞추는 디스크립션 clamp (짧은 대체 문장으로 폴백) */
+function clampDesc(main, short) {
+  if ([...main].length <= 80) return main;
+  if (short && [...short].length <= 80) return short;
+  return [...(short || main)].slice(0, 79).join("");
+}
+
+/* 을/를 조사 판별(받침 유무) */
+function ul(word) {
+  const c = word.charCodeAt(word.length - 1);
+  if (c < 0xac00 || c > 0xd7a3) return "를";
+  return (c - 0xac00) % 28 > 0 ? "을" : "를";
+}
+
+/* 프로필별 디스크립션 — 지역마다 문장 구조가 달라지도록 8종 템플릿 */
+function descByProfile(prof, place, spot, prog) {
+  const s = spot ? `${spot} ` : "";
+  const t = {
+    industrial: `${place} 출장마사지·홈타이 예약 전 ${s}산단 인접 숙소 이용 기준과 ${prog}·이동 시간을 안내합니다.`,
+    airport:    `${place} 출장마사지·홈타이 예약 전 ${s}공항 인접 숙소와 ${prog}·야간 이동 기준을 안내합니다.`,
+    tourist:    `${place} 출장마사지·홈타이 예약 전 ${s}리조트·관광 숙소 이용 기준과 ${prog}·이동 거리를 안내합니다.`,
+    coastal:    `${place} 출장마사지·홈타이 예약 전 ${s}해안 숙소 이용 기준과 ${prog}·야간 이동 기준을 안내합니다.`,
+    newtown:    `${place} 신도시 출장마사지·홈타이 예약 전 ${s}오피스텔·아파트 이용 기준과 ${prog}${ul(prog)} 안내합니다.`,
+    university: `${place} 출장마사지·홈타이 예약 전 ${s}대학가 오피스텔 이용 기준과 ${prog} 프로그램을 안내합니다.`,
+    admin:      `${place} 출장마사지·홈타이 예약 전 ${s}업무지구 오피스텔 이용 기준과 ${prog}${ul(prog)} 안내합니다.`,
+    urban:      `${place} 출장마사지·홈타이 예약 전 ${s}도심 오피스텔·호텔 이용 기준과 ${prog}·이동 동선을 안내합니다.`,
+  }[prof] || `${place} 출장마사지·홈타이 예약 전 ${s}숙소 이용 기준과 ${prog}${ul(prog)} 안내합니다.`;
+  return clampDesc(t, `${place} 출장마사지·홈타이 예약 전 ${s}숙소 이용 기준과 프로그램을 안내합니다.`);
+}
+
 /* 2,000~2,500자 지역 본문 — 지역별 고유 데이터(char/transport/stay/programs)를 엮어 생성 */
 function richArticle(ctx) {
   const { name, lead, transportText, stayText = "", includes = "", stationNames = [], programs = [], profile } = ctx;
@@ -341,9 +381,14 @@ function buildDistricts() {
 
     ${faqBlock(faq)}`;
 
+    const dSpots = keySpots(d.char, zoneArea && zoneArea.includes, 2);
+    const dSpotStr = dSpots.length ? dSpots.join("·") : d.name;
+    const dProg = programBySlug[d.programs[0]].name;
+    const dProf = profileOf(`${d.char} ${d.stay}`);
+    const dPlace = d.name.startsWith(cityName) ? d.name : `${cityName} ${d.name}`;
     emit(path, {
-      title: `${d.name} 출장마사지 안내｜${r.name}`,
-      desc: `${d.name} 출장마사지 예약 전 생활권 특징과 숙소 유형·이동 기준·프로그램을 안내합니다.`,
+      title: `${dPlace} 출장마사지·홈타이｜${dSpotStr} 이용 안내｜${site.brand}`,
+      desc: descByProfile(dProf, dPlace, dSpotStr, dProg),
       image: HERO, crumbs, faq, body,
     });
   }
@@ -407,9 +452,13 @@ function buildStations() {
     </div></div></section>
     ${faqBlock(faq)}`;
 
+    const sStayWord = /공항/.test(s.kind) ? "공항 인접 숙소" : /터미널/.test(s.kind) ? "터미널 인근 숙소" : "역세권 숙소";
+    const sProg = programBySlug[s.programs[0]].name;
     emit(path, {
-      title: `${s.name} 인근 출장마사지 안내｜${site.brand}`,
-      desc: `${s.name} 인근 숙소 출장마사지 예약 전 이동 동선과 숙소 이용 기준을 안내합니다.`,
+      title: `${s.name} 출장마사지·홈타이｜인근 ${s.kind} 숙소 이용 안내｜${site.brand}`,
+      desc: clampDesc(
+        `${s.name} 인근 출장마사지·홈타이 예약 전 ${sStayWord} 이용 기준과 ${sProg} 프로그램·이동 동선을 안내합니다.`,
+        `${s.name} 인근 출장마사지·홈타이 예약 전 ${sStayWord} 이용 기준과 ${sProg} 프로그램을 안내합니다.`),
       image: HERO, crumbs, faq, body,
     });
   }
@@ -452,8 +501,10 @@ function buildAreas() {
 
     ${faqBlock(faq)}`;
 
+    const aSpots = keySpots(a.includes, a.direction, 2);
     emit(`/area/${a.slug}/`, {
-      title: `${a.name} 출장마사지 안내｜${site.brand}`, desc: a.desc, image: HERO, crumbs, faq, body,
+      title: `${a.name} 출장마사지·홈타이｜${aSpots.length ? aSpots.join("·") + " " : ""}이용 안내｜${site.brand}`,
+      desc: a.desc, image: HERO, crumbs, faq, body,
     });
   }
 }
